@@ -1,0 +1,41 @@
+server {
+    listen 80;
+    listen  [::]:80;
+    server_name  localhost;
+    root /app;
+
+    #开启gzip
+    gzip on;  
+    #低于1kb的资源不压缩 
+    gzip_min_length 1k;
+    #压缩级别1-9，越大压缩率越高，同时消耗cpu资源也越多，建议设置在5左右。 
+    gzip_comp_level 6; 
+    #需要压缩哪些响应类型的资源，多个空格隔开。不建议压缩图片.
+    gzip_types text/plain application/javascript application/x-javascript text/javascript text/xml text/css;
+
+    location ~ ^/(static|__built__|assets)/ {
+        root /app;
+        expires max;
+        proxy_cache static_memory_cache;  # 使用内存缓存
+        proxy_cache_valid 200 1d;
+        proxy_cache_lock on;
+    }
+
+    location / {
+        expires -1;
+        try_files $uri /index.html;
+
+        add_header X-Frame-Options sameorigin;
+        add_header X-Content-Type-Options nosniff;
+        add_header X-XSS-Protection "1;mode=block" always;
+
+        sub_filter '__PROJECT_VERSION__' '$PROJECT_VERSION';
+        sub_filter '__ENV__' '$ENV';
+        sub_filter '__APP_CONFIG__' '$app_config';
+
+        # 需要将以下字符串替换为注入的扩展环境变量
+__EXTENT_CONFIG__
+
+        sub_filter_once on;
+    }
+}
