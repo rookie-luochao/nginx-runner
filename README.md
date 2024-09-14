@@ -1,11 +1,10 @@
-# Webrunner
+# Nginx-Runner
+简单的 Nginx Docker 容器
 
-Simple webapp runner
 
-# Configuration
+# 配置
 
-## `APP_ROOT`
-
+## Dist目录格式
 ```
 app/
     __built__/
@@ -22,18 +21,19 @@ app/
     index.html
 ```
 
-## `ENV` 
 
-be used to replace `__ENV__` in `index.html`
+# 支持的环境变量
 
-## `PROJECT_VERSION` 
+## 环境变量 `ENV` 
+在 `index.html` 中使用 `__ENV__` 进行占位
 
-be used to replace `__PROJECT_VERSION__` in `index.html`
 
-## `APP_CONFIG` or `APP_CONFIG__*`
+## 环境变量 `PROJECT_VERSION`
+在 `index.html` 中使用 `__PROJECT_VERSION__` 进行占位
 
-be used to replace `__APP_CONFIG__` in `index.html`
 
-* format: `key1=value1,key2=value2`
-* `APP_CONFIG__*` will join to `APP_CONFIG`
-* all `APP_CONFIG` will be sub_filter, like `value1` instead of `__key1__`
+## 环境变量 `APP_CONFIG`
+
+* 在 `index.html` 中使用 `__APP_CONFIG__` 进行占位
+* `APP_CONFIG` 变量格式: `key1=value1,key2=value2`
+* 使用方法：`docker run -d -p 80:80 -e APP_CONFIG=env=zh,appNameZH=简洁美观的接口文档 ghcr.io/rookie-luochao/openapi-ui:latest`
