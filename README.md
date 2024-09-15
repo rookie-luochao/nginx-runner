@@ -2,9 +2,8 @@
 简单的 Nginx Docker 容器
 
 
-# 配置
+## Nginx 配置对应的前端项目 Dist 目录格式(构建产物默认需要满足此格式)
 
-## Dist目录格式
 ```
 app/
     __built__/
@@ -22,18 +21,127 @@ app/
 ```
 
 
-# 支持的环境变量
+## 支持的环境变量
 
-## 环境变量 `ENV` 
+### 环境变量 `ENV` 
 在 `index.html` 中使用 `__ENV__` 进行占位
 
 
-## 环境变量 `PROJECT_VERSION`
+### 环境变量 `PROJECT_VERSION`
 在 `index.html` 中使用 `__PROJECT_VERSION__` 进行占位
 
 
-## 环境变量 `APP_CONFIG`
+### 环境变量 `APP_CONFIG`
 
 * 在 `index.html` 中使用 `__APP_CONFIG__` 进行占位
 * `APP_CONFIG` 变量格式: `key1=value1,key2=value2`
 * 使用方法：`docker run -d -p 80:80 -e APP_CONFIG=env=zh,appNameZH=简洁美观的接口文档 ghcr.io/rookie-luochao/openapi-ui:latest`
+
+
+## 使用方式
+
+### 改造 index.html 文件，加入环境变量占位符
+
+如下代码，包含meta标签：
+
+```html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/logo_mini.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="env" content="__ENV__" />
+    <meta name="app_config" content="__APP_CONFIG__" />
+    <title>webapp</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/index.tsx"></script>
+  </body>
+</html>
+```
+
+### 在项目根目录新建 Dockerfile
+
+如需 pnpm 缓存，使用以下代码：
+```dockerfile
+# syntax = docker/dockerfile:experimental
+FROM --platform=${BUILDPLATFORM:-linux/amd64,linux/arm64} node:20-buster AS builder
+
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable
+
+WORKDIR /src
+COPY ./ /src
+
+RUN --mount=type=cache,target=/src/node_modules,id=myapp_pnpm_module,sharing=locked \
+    --mount=type=cache,target=/pnpm/store,id=pnpm_cache \
+        pnpm install
+
+RUN --mount=type=cache,target=/src/node_modules,id=myapp_pnpm_module,sharing=locked \
+        pnpm run build
+
+FROM --platform=${BUILDPLATFORM:-linux/amd64,linux/arm64} ghcr.io/rookie-luochao/nginx-runner:latest
+
+COPY --from=builder /src/dist /app
+```
+
+如果无需 pnpm 缓存，使用以下代码：
+```dockerfile
+# syntax = docker/dockerfile:experimental
+FROM --platform=${BUILDPLATFORM:-linux/amd64,linux/arm64} node:20-buster AS builder
+
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable
+
+WORKDIR /src
+COPY ./ ./
+
+# RUN两次方便观察install和build, 也可以用pnpm cache and locked
+RUN pnpm install
+RUN npm run build
+
+FROM --platform=${BUILDPLATFORM:-linux/amd64,linux/arm64} ghcr.io/rookie-luochao/nginx-runner:latest
+
+COPY --from=builder /src/dist /app
+```
+
+### 打包构建镜像
+
+单架构镜像构建(需要安装 buildx 工具)
+
+```bash
+# 本地构建单架构镜
+docker build -t myapp:latest .
+
+# 登录 dockerhub
+docker login
+
+# 推送镜像到 dockerhub
+docker push ydockerhubuser/myapp:latest
+```
+
+多架构镜像构建
+
+```bash
+# 本地构建多架构镜像但不推送
+docker buildx build --platform linux/amd64,linux/arm64 -t myapp:latest --load .
+
+# 本地构建多架构镜像，并且推送 dockerhub
+docker buildx build --platform linux/amd64,linux/arm64 -t <your-username>/<image-name>:<tag> --push .
+```
+
+### Docker 环境变量注入模式启动
+
+以 `ghcr.io/rookie-luochao/openapi-ui` 为例子进行启动：
+
+```bash
+# pull Docker image
+docker pull ghcr.io/rookie-luochao/openapi-ui:latest
+
+# start container, nginx reverse proxy custom port, for example: docker run -d -p 8081:80 ghcr.io/rookie-luochao/openapi-ui:latest
+docker run -d -p 80:80 -e APP_CONFIG=env=zh,appNameZH=简洁美观的接口文档 ghcr.io/rookie-luochao/openapi-ui:latest
+```
