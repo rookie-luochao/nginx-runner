@@ -145,3 +145,109 @@ docker pull ghcr.io/rookie-luochao/openapi-ui:latest
 # start container, nginx reverse proxy custom port, for example: docker run -d -p 8081:80 ghcr.io/rookie-luochao/openapi-ui:latest
 docker run -d -p 80:80 -e APP_CONFIG=env=zh,appNameZH=简洁美观的接口文档 ghcr.io/rookie-luochao/openapi-ui:latest
 ```
+
+### 使用 github-action 构建 docker 镜像
+
+- 项目根目录执行：新建.github文件夹 => 在.github文件夹下面新建workflows文件夹 => 新建 docker-image-ci.yml文件
+- 然后贴入一下代码：
+
+```yml
+name: Docker Image CI
+
+on:
+  push:
+    tags:
+      - v*
+
+  # 这个选项可以使你手动在 Action tab 页面触发工作流
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: get version
+        id: vars
+        run: echo ::set-output name=version::${GITHUB_REF/refs\/tags\/v/}
+
+      - uses: actions/checkout@v4
+
+      - name: set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: set up docker buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: login ghrc hub
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: build and push
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/myapp:${{ steps.vars.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/myapp:latest
+```
+
+### 前端获取 Docker 注入的环境变量
+
+前端项目获取 Docker 注入的环境变量，可以参考如下代码：
+
+```ts
+import appConfig, { IConfig } from "@/config";
+
+export function getConfig(): IConfig {
+  const mateEnv = import.meta.env;
+  const defaultAppConfig = {
+    appName: mateEnv?.VITE_appName || "",
+    appNameZH: mateEnv?.VITE_appNameZH || "",
+    baseURL: mateEnv?.VITE_baseURL || "",
+    version: mateEnv?.VITE_version || "",
+    env: mateEnv?.VITE_env || "",
+  };
+
+  // dev mode get env var by src/config.ts file, prod mode get env var by mate, write the mate tag of HTML through docker arg var
+  // mate tag name is：app_config, content format is：appName=webapp,baseURL=https://api.com,env=,version=
+  if (import.meta.env.DEV) {
+    return appConfig;
+  } else {
+    const appConfigStr = getMeta("app_config");
+
+    if (!appConfigStr) return defaultAppConfig;
+
+    return parseEnvVar(appConfigStr);
+  }
+}
+
+function getMeta(metaName: string) {
+  const metas = document.getElementsByTagName("meta");
+
+  for (let i = 0; i < metas.length; i++) {
+    if (metas[i].getAttribute("name") === metaName) {
+      return metas[i].getAttribute("content");
+    }
+  }
+
+  return "";
+}
+
+function parseEnvVar(envVarURL: string) {
+  const arrs = envVarURL.split(",");
+
+  return arrs.reduce((pre, item) => {
+    const keyValues = item.split("=");
+
+    return {
+      ...pre,
+      [keyValues[0]]: keyValues[1],
+    };
+  }, {} as IConfig);
+}
+
+```
